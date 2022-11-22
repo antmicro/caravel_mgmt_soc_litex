@@ -24,6 +24,7 @@ from litex.soc.cores.spi import SPIMaster, SPISlave
 import litex.soc.doc as lxsocdoc
 
 from caravel_platform import CaravelPlatform
+from caravel_platform_arty import ArtyPlatform
 from caravel_ram import *
 
 # SoCMini.mem_map = {
@@ -46,7 +47,7 @@ class MGMTSoC(SoCMini):
         # cpu = 'ibex'
         # cpu = 'vexriscv'
 
-        platform = platform_class("mgmt_soc")
+        platform = self.platform = platform_class("mgmt_soc")
 
         # CRG --------------------------------------------------------------------------------------
         # self.submodules.crg = CRG(platform.request("core_clk"), rst=platform.request("core_rst"))
@@ -142,8 +143,12 @@ class MGMTSoC(SoCMini):
 
         #DFFRAM
         dff_size = 1 * 1024
-        dff = self.submodules.mem = DFFRAM(size=dff_size)
-        self.bus.add_slave("dff", self.mem.bus, SoCRegion(origin=self.mem_map["dff"], size=dff_size))
+        if isinstance(platform, CaravelPlatform):
+            dff = self.submodules.mem = DFFRAM(size=dff_size)
+        else:
+            dff = self.submodules.mem = wishbone.SRAM(dff_size)
+        self.bus.add_slave("mem", self.mem.bus, SoCRegion(origin=self.mem_map["dff"], size=dff_size))
+
         # mgmt_soc_dff = platform.request("mgmt_soc_dff")
         # self.comb += mgmt_soc_dff.WE.eq(dff.we)
         # self.comb += mgmt_soc_dff.A.eq(dff.bus.adr)
@@ -153,13 +158,19 @@ class MGMTSoC(SoCMini):
 
         #DFFRAM2
         dff2_size = 512
-        dff2 = self.submodules.mem2 = DFFRAM_512(size=dff2_size)
-        self.bus.add_slave("dff2", self.mem2.bus, SoCRegion(origin=self.mem_map["dff2"], size=dff2_size))
+        if isinstance(platform, CaravelPlatform):
+            dff2 = self.submodules.mem2 = DFFRAM_512(size=dff2_size)
+        else:
+            dff2 = self.submodules.mem2 = wishbone.SRAM(dff2_size)
+        self.bus.add_slave("mem2", self.mem2.bus, SoCRegion(origin=self.mem_map["dff2"], size=dff2_size))
 
         # #OpenRAM
         # spram_size = 2 * 1024
-        # sram = self.submodules.spram = OpenRAM(size=spram_size)
-        # self.register_mem("sram", self.mem_map["sram"], self.spram.bus, spram_size)
+        # if isinstance(platform, CaravelPlatform):
+        #     sram = self.submodules.spram = OpenRAM(size=spram_size)
+        #     self.register_mem("sram", self.mem_map["sram"], self.spram.bus, spram_size)
+        # else:
+        #     self.add_ram("sram", origin=self.mem_map["sram"], size=spram_size, mode="rw")
         # sram_ro_ports = platform.request("sram_ro")
         # self.comb += sram_ro_ports.clk.eq(sram.clk1)
         # self.comb += sram_ro_ports.csb.eq(sram.cs_b1)
@@ -182,31 +193,38 @@ class MGMTSoC(SoCMini):
         spi_master.add_clk_divider()
         self.submodules.spi_master = spi_master
         #self.add_interrupt(interrupt_name="spi_master")
-        self.comb += spi_master.pads.sdoenb.eq(~spi_master.pads.cs_n)
+        if isinstance(platform, CaravelPlatform):
+            self.comb += spi_master.pads.sdoenb.eq(~spi_master.pads.cs_n)
 
         # Add a wb port for external slaves user_project
-        mprj_ports = platform.request("mprj")
+        # TODO: user project
         mprj = wishbone.Interface()
         self.bus.add_slave(name="mprj", slave=mprj, region=SoCRegion(origin=self.mem_map["mprj"], size=0x10000000))
-        self.submodules.mprj_wb_iena = GPIOOut(mprj_ports.wb_iena)
-        self.comb += mprj_ports.cyc_o.eq(mprj.cyc)
-        self.comb += mprj_ports.stb_o.eq(mprj.stb)
-        self.comb += mprj_ports.we_o.eq(mprj.we)
-        self.comb += mprj_ports.sel_o.eq(mprj.sel)
-        self.comb += mprj_ports.adr_o[2:32].eq(mprj.adr)
-        self.comb += mprj_ports.adr_o[0:2].eq(0)
-        self.comb += mprj.dat_r.eq(mprj_ports.dat_i)
-        self.comb += mprj_ports.dat_o.eq(mprj.dat_w)
-        self.comb += mprj.ack.eq(mprj_ports.ack_i)
+        if isinstance(platform, CaravelPlatform):
+            mprj_ports = platform.request("mprj")
+            self.submodules.mprj_wb_iena = GPIOOut(mprj_ports.wb_iena)
+            self.comb += mprj_ports.cyc_o.eq(mprj.cyc)
+            self.comb += mprj_ports.stb_o.eq(mprj.stb)
+            self.comb += mprj_ports.we_o.eq(mprj.we)
+            self.comb += mprj_ports.sel_o.eq(mprj.sel)
+            self.comb += mprj_ports.adr_o[2:32].eq(mprj.adr)
+            self.comb += mprj_ports.adr_o[0:2].eq(0)
+            self.comb += mprj.dat_r.eq(mprj_ports.dat_i)
+            self.comb += mprj_ports.dat_o.eq(mprj.dat_w)
+            self.comb += mprj.ack.eq(mprj_ports.ack_i)
+        else:
+            self.submodules.mprj_wb_iena = GPIOOut(Signal()) # buffer input enable, ignored
 
         # Add a wb port for external slaves housekeeping
+        # TODO: housekeeping
         hk = wishbone.Interface()
         self.bus.add_slave(name="hk", slave=hk, region=SoCRegion(origin=self.mem_map["hk"], size=0x00300000))
-        hk_ports = platform.request("hk")
-        self.comb += hk_ports.stb_o.eq(hk.stb)
-        self.comb += hk_ports.cyc_o.eq(hk.cyc)
-        self.comb += hk.dat_r.eq(hk_ports.dat_i)
-        self.comb += hk.ack.eq(hk_ports.ack_i)
+        if isinstance(platform, CaravelPlatform):
+            hk_ports = platform.request("hk")
+            self.comb += hk_ports.stb_o.eq(hk.stb)
+            self.comb += hk_ports.cyc_o.eq(hk.cyc)
+            self.comb += hk.dat_r.eq(hk_ports.dat_i)
+            self.comb += hk.ack.eq(hk_ports.ack_i)
 
         # Add System UART
         sys_uart = Record([('rx', 1), ('tx', 1)])
@@ -223,7 +241,8 @@ class MGMTSoC(SoCMini):
         uart_ports = platform.request("serial")
         debug_ports = platform.request("debug")
         self.submodules.debug_oeb = GPIOOut(debug_ports.oeb)
-        self.comb += debug_ports.out.eq(0)
+        if isinstance(platform, CaravelPlatform):
+            self.comb += debug_ports.out.eq(0) # TODO: unused
         self.submodules.debug_mode = GPIOOut(platform.request("debug_mode"))
 
         # Mux uart outputs to serial ports
@@ -250,15 +269,27 @@ class MGMTSoC(SoCMini):
         #   develop test bench to confirm functionality
 
         # Add a GPIO Pin
-        self.submodules.gpio = GPIOASIC(platform.request("gpio"))
+        if isinstance(platform, CaravelPlatform):
+            self.submodules.gpio = GPIOASIC(platform.request("gpio"))
+        else:
+            self.submodules.gpio = GPIOFPGA(platform.request("gpio"))
 
         # Add the logic Analyzer
-        self.submodules.la = LogicAnalyzer(platform.request("la"))
+        
+        if isinstance(platform, CaravelPlatform):
+            la_pads = platform.request("la")
+        else:
+            la_pads = Record([("output", 128), ("input", 128), ("oenb", 128), ("iena", 128)])
+            # ien, oe, output ignored
+            for i in range(128):
+                la_pads.input[i].eq(la_pads.iena[i])
+        self.submodules.la = LogicAnalyzer(la_pads)
         # self.submodules.la_ien = GPIOOut(platform.request("la_ien"))
 
         # Add the user's input control
-        qspi_enabled = platform.request("qspi_enabled")
-        self.comb += qspi_enabled.eq(0)
+        if isinstance(platform, CaravelPlatform):
+            qspi_enabled = platform.request("qspi_enabled")
+            self.comb += qspi_enabled.eq(0) # TODO: unused
         self.submodules.spi_enabled = GPIOOut(platform.request("spi_enabled"))
 
         trap = platform.request("trap")
@@ -267,58 +298,72 @@ class MGMTSoC(SoCMini):
         else:
             self.comb += trap.eq(0)
 
-        self.submodules.user_irq_ena = GPIOOut(platform.request("user_irq_ena"))
+        if isinstance(platform, CaravelPlatform):
+            user_irq_ena_pads = platform.request("user_irq_ena")
+        else:
+            user_irq_ena_pads = Signal(3)
+        self.submodules.user_irq_ena = GPIOOut(user_irq_ena_pads)
         # NOTE - these are not connected
 
         # Add 6 IRQ lines
-        user_irq = platform.request("user_irq")
+        # TODO: user project
+        if isinstance(platform, CaravelPlatform):
+            user_irq = platform.request("user_irq")
+        else:
+            user_irq = []
+            for i in range(6):
+                user_irq.append(Signal())
+                user_irq[i].eq(1)
         for i in range(len(user_irq)):
             setattr(self.submodules,"user_irq_"+str(i),GPIOIn(user_irq[i], with_irq=True))
             self.irq.add("user_irq_"+str(i), use_loc_if_exists=True)
 
-        # Pass-thru clock and reset
-        clk_in = platform.request("clk_in")
-        clk_out = platform.request("clk_out")
-        resetn_in = platform.request("resetn_in")
-        resetn_out = platform.request("resetn_out")
-        self.comb += clk_out.eq(clk_in)
-        self.comb += resetn_out.eq(resetn_in)
+        if isinstance(platform, CaravelPlatform):
+            # Pass-thru clock and reset
+            clk_in = platform.request("clk_in")
+            clk_out = platform.request("clk_out")
+            resetn_in = platform.request("resetn_in")
+            resetn_out = platform.request("resetn_out")
+            self.comb += clk_out.eq(clk_in)
+            self.comb += resetn_out.eq(resetn_in)
 
-        serial_load_in = platform.request("serial_load_in")
-        serial_load_out = platform.request("serial_load_out")
-        self.comb += serial_load_out.eq(serial_load_in)
+            serial_load_in = platform.request("serial_load_in")
+            serial_load_out = platform.request("serial_load_out")
+            self.comb += serial_load_out.eq(serial_load_in)
 
-        serial_data_2_in = platform.request("serial_data_2_in")
-        serial_data_2_out = platform.request("serial_data_2_out")
-        self.comb += serial_data_2_out.eq(serial_data_2_in)
+            serial_data_2_in = platform.request("serial_data_2_in")
+            serial_data_2_out = platform.request("serial_data_2_out")
+            self.comb += serial_data_2_out.eq(serial_data_2_in)
 
-        serial_resetn_in = platform.request("serial_resetn_in")
-        serial_resetn_out = platform.request("serial_resetn_out")
-        self.comb += serial_resetn_out.eq(serial_resetn_in)
+            serial_resetn_in = platform.request("serial_resetn_in")
+            serial_resetn_out = platform.request("serial_resetn_out")
+            self.comb += serial_resetn_out.eq(serial_resetn_in)
 
-        serial_clock_in = platform.request("serial_clock_in")
-        serial_clock_out = platform.request("serial_clock_out")
-        self.comb += serial_clock_out.eq(serial_clock_in)
+            serial_clock_in = platform.request("serial_clock_in")
+            serial_clock_out = platform.request("serial_clock_out")
+            self.comb += serial_clock_out.eq(serial_clock_in)
 
-        rstb_l_in = platform.request("rstb_l_in")
-        rstb_l_out = platform.request("rstb_l_out")
-        self.comb += rstb_l_out.eq(rstb_l_in)
+            rstb_l_in = platform.request("rstb_l_in")
+            rstb_l_out = platform.request("rstb_l_out")
+            self.comb += rstb_l_out.eq(rstb_l_in)
 
-        por_l_in = platform.request("por_l_in")
-        por_l_out = platform.request("por_l_out")
-        self.comb += por_l_out.eq(por_l_in)
+            por_l_in = platform.request("por_l_in")
+            por_l_out = platform.request("por_l_out")
+            self.comb += por_l_out.eq(por_l_in)
 
-        porb_h_in = platform.request("porb_h_in")
-        porb_h_out = platform.request("porb_h_out")
-        self.comb += porb_h_out.eq(porb_h_in)
+            porb_h_in = platform.request("porb_h_in")
+            porb_h_out = platform.request("porb_h_out")
+            self.comb += porb_h_out.eq(porb_h_in)
 
     #####################
 
     def new_add_spi_flash(self, name="flash", mode="4x", clk_freq=None, module=None, phy=None, rate="1:1", **kwargs):
         # Imports.
         from litespi import LiteSPI
-        # from litespi.phy.generic import LiteSPIPHY
-        from generic import LiteSPIPHY
+        if isinstance(self.platform, CaravelPlatform):
+            from generic import LiteSPIPHY
+        else:
+            from litespi.phy.generic import LiteSPIPHY
         from litespi.opcodes import SpiNorFlashOpCodes
 
         # Checks/Parameters.
@@ -353,7 +398,8 @@ class MGMTSoC(SoCMini):
 
 def main():
     platforms = {
-        "caravel": CaravelPlatform
+        "caravel": CaravelPlatform,
+        "arty": ArtyPlatform
     }
     parser = argparse.ArgumentParser(
         description="Caravel Management SoC"
