@@ -1,7 +1,7 @@
 PACKAGES=libc libcompiler_rt libbase libfatfs liblitespi liblitedram libliteeth liblitesdcard liblitesata bios
 PACKAGE_DIRS=/home/rkolucki/code/efabless/caravel_mgmt_soc_litex/litex/third_party/litex/litex/soc/software/libc /home/rkolucki/code/efabless/caravel_mgmt_soc_litex/litex/third_party/litex/litex/soc/software/libcompiler_rt /home/rkolucki/code/efabless/caravel_mgmt_soc_litex/litex/third_party/litex/litex/soc/software/libbase /home/rkolucki/code/efabless/caravel_mgmt_soc_litex/litex/third_party/litex/litex/soc/software/libfatfs /home/rkolucki/code/efabless/caravel_mgmt_soc_litex/litex/third_party/litex/litex/soc/software/liblitespi /home/rkolucki/code/efabless/caravel_mgmt_soc_litex/litex/third_party/litex/litex/soc/software/liblitedram /home/rkolucki/code/efabless/caravel_mgmt_soc_litex/litex/third_party/litex/litex/soc/software/libliteeth /home/rkolucki/code/efabless/caravel_mgmt_soc_litex/litex/third_party/litex/litex/soc/software/liblitesdcard /home/rkolucki/code/efabless/caravel_mgmt_soc_litex/litex/third_party/litex/litex/soc/software/liblitesata /home/rkolucki/code/efabless/caravel_mgmt_soc_litex/litex/third_party/litex/litex/soc/software/bios
 LIBS=libc libcompiler_rt libbase libfatfs liblitespi liblitedram libliteeth liblitesdcard liblitesata
-TRIPLE=--not-found--
+TRIPLE=riscv64-unknown-elf
 CPU=vexriscv
 CPUFAMILY=riscv
 CPUFLAGS=-march=rv32i2p0       -mabi=ilp32 -D__vexriscv__
